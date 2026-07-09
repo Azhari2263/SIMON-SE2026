@@ -1024,12 +1024,13 @@
             const yesterdayStr = appState.refStatus && appState.refStatus.yesterdayStr ? appState.refStatus.yesterdayStr : "";
             const todayStr = appState.refStatus && appState.refStatus.todayStr ? appState.refStatus.todayStr : "";
 
-            if (isAppsScript) {
+            if (isAppsScript || hasWebAppUrl) {
                 showLoadingOverlay("Memproses dan menyimpan data ke Google Spreadsheet...");
-                google.script.run
-                    .withSuccessHandler(onUploadSuccess)
-                    .withFailureHandler(onUploadFailure)
-                    .processUploads(appState.uploadedYesterdayFile, appState.uploadedTodayFile, filenames, yesterdayStr, todayStr);
+                callBackend('processUploads', 
+                    [appState.uploadedYesterdayFile, appState.uploadedTodayFile, filenames, yesterdayStr, todayStr],
+                    onUploadSuccess,
+                    onUploadFailure
+                );
             } else {
                 // Fallback Simulasi Lokal jika dijalankan di luar Apps Script
                 let baselineData = [];
