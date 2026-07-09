@@ -138,7 +138,45 @@ function getMonitoringDataByDate(dateString) {
 }
 
 /**
- * Memeriksa ketersediaan data referensi hari sebelumnya
+ * Memindai log aktivitas untuk mengambil nama file terakhir yang diunggah untuk tanggal target tertentu
+ */
+function getLatestUploadedFilenames(yesterdayStr, todayStr) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(SHEET_HISTORY_NAME);
+    let yesterdayFile = "";
+    let todayFile = "";
+    
+    if (sheet && sheet.getLastRow() > 1) {
+      const lastRow = sheet.getLastRow();
+      const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+      // Pindai dari data terbaru ke terlama
+      for (let i = data.length - 1; i >= 0; i--) {
+        const type = String(data[i][1] || "");
+        const file = String(data[i][2] || "");
+        
+        // Cek file H-1
+        if (!yesterdayFile && type.indexOf("H-1") !== -1 && type.indexOf(yesterdayStr) !== -1) {
+          yesterdayFile = file;
+        }
+        // Cek file H
+        if (!todayFile && (type.indexOf("Hari Ini") !== -1 || type.indexOf("Kalkulasi") !== -1) && type.indexOf(todayStr) !== -1) {
+          todayFile = file;
+        }
+        if (yesterdayFile && todayFile) break;
+      }
+    }
+    return {
+      yesterdayFile: yesterdayFile || "Data Tersimpan",
+      todayFile: todayFile || "Data Tersimpan"
+    };
+  } catch (err) {
+    return { yesterdayFile: "Data Tersimpan", todayFile: "Data Tersimpan" };
+  }
+}
+
+/**
+ * Memeriksa ketersediaan data referensi hari sebelumnya dan data terbaru hari ini
  */
 function checkReferenceData() {
   try {
@@ -156,7 +194,9 @@ function checkReferenceData() {
     const serverYesterdayStr = formatIndonesianDate(yesterdayDate);
     
     let hasData = false;
+    let hasTodayData = false;
     let totalCount = 0;
+    let todayCount = 0;
     
     if (latestDate) {
       const latestDateStr = formatIndonesianDate(latestDate);
@@ -176,6 +216,13 @@ function checkReferenceData() {
         } else {
           hasData = false;
         }
+        
+        // Periksa apakah data hari ini (H) juga sudah ada
+        const todayRows = getMonitoringDataByDate(serverTodayStr);
+        if (todayRows.length > 0) {
+          hasTodayData = true;
+          todayCount = todayRows.length;
+        }
       } else if (latestDateStr === serverYesterdayStr) {
         // Normal: data kemarin ada di database. User tinggal upload data hari ini.
         yesterdayDate = latestDate;
@@ -184,6 +231,8 @@ function checkReferenceData() {
         const yesterdayRows = getMonitoringDataByDate(latestDateStr);
         hasData = true;
         totalCount = yesterdayRows.length;
+        
+        hasTodayData = false;
       } else {
         // Terjadi jeda/gap!
         const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
@@ -194,6 +243,7 @@ function checkReferenceData() {
           yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
           todayDate = now;
           hasData = false;
+          hasTodayData = false;
         } else {
           // Jeda > 1 hari. Geser target upload secara kronologis.
           yesterdayDate = latestDate;
@@ -202,25 +252,39 @@ function checkReferenceData() {
           
           const yesterdayRows = getMonitoringDataByDate(latestDateStr);
           totalCount = yesterdayRows.length;
+          
+          // Periksa apakah target H juga sudah ada di DB
+          const targetTodayStr = formatIndonesianDate(todayDate);
+          const todayRows = getMonitoringDataByDate(targetTodayStr);
+          if (todayRows.length > 0) {
+            hasTodayData = true;
+            todayCount = todayRows.length;
+          }
         }
       }
     } else {
       // Database kosong
       hasData = false;
+      hasTodayData = false;
     }
     
     const todayStr = formatIndonesianDate(todayDate);
     const yesterdayStr = formatIndonesianDate(yesterdayDate);
+    const filenames = getLatestUploadedFilenames(yesterdayStr, todayStr);
     
     return {
       hasData: hasData,
+      hasTodayData: hasTodayData,
       todayStr: todayStr,
       yesterdayStr: yesterdayStr,
       latestDateStr: latestDate ? formatIndonesianDate(latestDate) : "Belum ada",
-      totalCount: totalCount
+      totalCount: totalCount,
+      todayCount: todayCount,
+      yesterdayFileName: filenames.yesterdayFile,
+      todayFileName: filenames.todayFile
     };
   } catch (e) {
-    return { hasData: false, error: e.toString() };
+    return { hasData: false, hasTodayData: false, error: e.toString() };
   }
 }
 
@@ -257,41 +321,52 @@ function clearHistoryLog() {
 }
 
 /**
- * Menyimpan/memperbarui data monitoring ke sheet DATA_MONITORING berdasarkan tanggal
+ * Menyimpan/memperbarui data monitoring ke sheet DATA_MONITORING berdasarkan tanggal secara cepat (in-memory)
  */
 function saveMonitoringData(dataObj, dateString) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(SHEET_MONITORING_NAME);
   
+  const headers = ["Tanggal"].concat(REQUIRED_COLUMNS);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_MONITORING_NAME);
-    const headers = ["Tanggal"].concat(REQUIRED_COLUMNS);
     sheet.appendRow(headers);
   }
   
-  // Hapus data lama dengan tanggal yang sama agar tidak duplikat
   const lastRow = sheet.getLastRow();
+  const rowsToWrite = [];
+  
+  // Filter in-memory data lama yang tanggalnya TIDAK sama dengan dateString
   if (lastRow > 1) {
-    const displayDates = sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
-    for (let i = lastRow; i >= 2; i--) {
-      const rowDateStr = displayDates[i - 2][0].trim();
-      if (rowDateStr === dateString) {
-        sheet.deleteRow(i);
+    const allData = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+    for (let i = 0; i < allData.length; i++) {
+      // Cek kolom pertama (Tanggal)
+      const rowDateStr = String(allData[i][0]).trim();
+      if (rowDateStr !== dateString) {
+        rowsToWrite.push(allData[i]);
       }
     }
   }
   
-  // Tulis data baru
+  // Tambahkan data baru ke array in-memory
   if (dataObj && dataObj.length > 0) {
-    const rowsToWrite = dataObj.map(row => {
+    dataObj.forEach(row => {
       const rowData = [dateString];
       REQUIRED_COLUMNS.forEach(col => {
         rowData.push(row[col] !== undefined ? row[col] : "");
       });
-      return rowData;
+      rowsToWrite.push(rowData);
     });
-    const startRow = sheet.getLastRow() + 1;
-    sheet.getRange(startRow, 1, rowsToWrite.length, rowsToWrite[0].length).setValues(rowsToWrite);
+  }
+  
+  // Kosongkan area data lama (di bawah header)
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
+  }
+  
+  // Tulis kembali data gabungan dalam satu kali operasi batch
+  if (rowsToWrite.length > 0) {
+    sheet.getRange(2, 1, rowsToWrite.length, headers.length).setValues(rowsToWrite);
   }
 }
 

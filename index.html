@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simon SE2026 — Sistem Monitoring Kinerja PPL & PJ Kuda</title>
+    <title>SIMONS SE2026 — Aplikasi Monitoring Submit Pendataan SE2026</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
@@ -60,9 +60,9 @@
                     </div>
                     <div>
                         <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 flex items-center gap-2">
-                            SIMON-SE2026
+                            SIMONS SE2026
                         </h1>
-                        <p class="text-[10px] sm:text-xs text-slate-500 font-medium">Monitoring & Analisis Perkembangan Kinerja PPL & PJ Kuda</p>
+                        <p class="text-[10px] sm:text-xs text-slate-500 font-medium">Aplikasi Monitoring Submit Pendataan SE2026</p>
                     </div>
                 </div>
 
@@ -461,12 +461,23 @@
         let appState = {
             yesterdayDB: [], // Simulated REF_DATA sheet
             yesterdayFileName: "",
+            todayDB: [],     // Saved Today's data
+            todayFileName: "",
             history: [],
             currentReport: [],
             uploadedYesterdayFile: null,
             uploadedTodayFile: null,
             activeTab: 'dashboard'
         };
+
+        // Date utility helper for local simulation
+        function getIndonesianDateStr(date) {
+            const months = [
+                "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+                "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+            ];
+            return date.getDate() + " " + months[date.getMonth()] + " " + date.getFullYear();
+        }
 
         // Standard Target Columns Checklist
         const REQUIRED_COLUMNS = [
@@ -549,11 +560,18 @@
             } else {
                 // Fallback untuk local testing
                 loadLocalDB();
+                
+                const today = new Date();
+                const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+                
                 appState.refStatus = {
                     hasData: appState.yesterdayDB.length > 0,
-                    yesterdayStr: "8 Juli 2026",
-                    todayStr: "9 Juli 2026",
-                    latestDateStr: appState.yesterdayDB.length > 0 ? "8 Juli 2026" : "Belum ada"
+                    hasTodayData: appState.todayDB.length > 0,
+                    yesterdayStr: getIndonesianDateStr(yesterday),
+                    todayStr: getIndonesianDateStr(today),
+                    latestDateStr: appState.todayDB.length > 0 ? getIndonesianDateStr(today) : (appState.yesterdayDB.length > 0 ? getIndonesianDateStr(yesterday) : "Belum ada"),
+                    yesterdayFileName: appState.yesterdayFileName,
+                    todayFileName: appState.todayFileName
                 };
                 const labelYesterday = document.getElementById('label-yesterday-date');
                 const labelToday = document.getElementById('label-today-date');
@@ -619,10 +637,19 @@
                 // Update baseline data
                 if (result.refStatus.hasData) {
                     appState.yesterdayDB = new Array(result.refStatus.totalCount || 1).fill({});
-                    appState.yesterdayFileName = result.refStatus.latestDateStr || "Data Tersimpan";
+                    appState.yesterdayFileName = result.refStatus.yesterdayFileName || "Data Tersimpan";
                 } else {
                     appState.yesterdayDB = [];
                     appState.yesterdayFileName = "";
+                }
+                
+                // Update today data
+                if (result.refStatus.hasTodayData) {
+                    appState.todayDB = new Array(result.refStatus.todayCount || 1).fill({});
+                    appState.todayFileName = result.refStatus.todayFileName || "Data Tersimpan";
+                } else {
+                    appState.todayDB = [];
+                    appState.todayFileName = "";
                 }
                 
                 // Simpan status referensi ke state lokal
@@ -669,12 +696,44 @@
         // Local Storage Sync (Simulates Google Sheet Persistence)
         function loadLocalDB() {
             const savedDB = localStorage.getItem('simon_yesterday_db');
+            const savedTodayDB = localStorage.getItem('simon_today_db');
             const savedHistory = localStorage.getItem('simon_history_db');
+            const lastUploadDate = localStorage.getItem('simon_last_upload_date');
             
-            if (savedDB) {
-                appState.yesterdayDB = JSON.parse(savedDB);
-                appState.yesterdayFileName = localStorage.getItem('simon_yesterday_filename') || "yesterday_stored.xlsx";
+            const todayStrVal = getIndonesianDateStr(new Date());
+            
+            // Cek apakah tanggal upload terakhir ada dan berbeda dengan hari ini (masuk hari berikutnya)
+            if (lastUploadDate && lastUploadDate !== todayStrVal && savedTodayDB) {
+                // Shift data: H menjadi H-1
+                appState.yesterdayDB = JSON.parse(savedTodayDB);
+                appState.yesterdayFileName = localStorage.getItem('simon_today_filename') || "yesterday_stored.xlsx";
+                appState.todayDB = [];
+                appState.todayFileName = "";
+                
+                // Simpan perubahan shift ke localStorage
+                localStorage.setItem('simon_yesterday_db', JSON.stringify(appState.yesterdayDB));
+                localStorage.setItem('simon_yesterday_filename', appState.yesterdayFileName);
+                localStorage.removeItem('simon_today_db');
+                localStorage.removeItem('simon_today_filename');
+            } else {
+                // Tetap muat data seperti biasa (belum ganti hari atau hari yang sama)
+                if (savedDB) {
+                    appState.yesterdayDB = JSON.parse(savedDB);
+                    appState.yesterdayFileName = localStorage.getItem('simon_yesterday_filename') || "yesterday_stored.xlsx";
+                } else {
+                    appState.yesterdayDB = [];
+                    appState.yesterdayFileName = "";
+                }
+                
+                if (savedTodayDB) {
+                    appState.todayDB = JSON.parse(savedTodayDB);
+                    appState.todayFileName = localStorage.getItem('simon_today_filename') || "today_stored.xlsx";
+                } else {
+                    appState.todayDB = [];
+                    appState.todayFileName = "";
+                }
             }
+            
             if (savedHistory) {
                 appState.history = JSON.parse(savedHistory);
             } else {
@@ -688,6 +747,8 @@
         function saveDBToLocal() {
             localStorage.setItem('simon_yesterday_db', JSON.stringify(appState.yesterdayDB));
             localStorage.setItem('simon_yesterday_filename', appState.yesterdayFileName);
+            localStorage.setItem('simon_today_db', JSON.stringify(appState.todayDB));
+            localStorage.setItem('simon_today_filename', appState.todayFileName);
         }
 
         function saveHistoryToLocal() {
@@ -786,25 +847,127 @@
         function updateUIState() {
             const hasData = appState.yesterdayDB.length > 0;
             const hasUploadedYesterday = appState.uploadedYesterdayFile !== null;
+            const hasTodayData = appState.todayDB && appState.todayDB.length > 0;
+            const hasUploadedToday = appState.uploadedTodayFile !== null;
             
             const badge = document.getElementById('badge-status-db');
             const uploadYesterdayContainer = document.getElementById('container-upload-yesterday');
             const uploadTodayContainer = document.getElementById('container-upload-today');
             const headerDbStatus = document.getElementById('header-db-status');
             const labelYesterdayStatus = document.getElementById('label-yesterday-status');
+            const labelTodayStatus = document.getElementById('today-upload-status');
+            const labelYesterdayText = document.getElementById('text-file-yesterday');
+            const labelTodayText = document.getElementById('text-file-today');
+            const iconYesterday = document.getElementById('icon-file-yesterday');
+            const iconToday = document.getElementById('icon-file-today');
 
-            if (hasData) {
-                if (badge) {
-                    badge.className = "px-3.5 py-2 rounded-2xl text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center gap-1.5";
-                    badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Referensi H-1: Tersedia`;
+            // 1. UPDATE YESTERDAY (H-1) UI STATE
+            if (hasUploadedYesterday) {
+                if (iconYesterday) iconYesterday.className = "fa-solid fa-circle-check text-4xl text-emerald-500 mb-3";
+                if (labelYesterdayStatus) {
+                    labelYesterdayStatus.className = "font-extrabold text-emerald-600";
+                    labelYesterdayStatus.innerText = "Valid (Baru Diunggah)";
                 }
+            } else if (hasData) {
                 if (uploadYesterdayContainer) {
                     uploadYesterdayContainer.style.opacity = '0.35';
                     uploadYesterdayContainer.style.pointerEvents = 'none';
                 }
+                if (iconYesterday) iconYesterday.className = "fa-solid fa-circle-check text-4xl text-emerald-500 mb-3";
+                if (labelYesterdayText) {
+                    labelYesterdayText.innerText = appState.yesterdayFileName || "Data Tersimpan";
+                }
                 if (labelYesterdayStatus) {
                     labelYesterdayStatus.className = "font-extrabold text-emerald-600 flex items-center gap-1";
                     labelYesterdayStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Sudah Tersimpan di Database`;
+                }
+                if (document.getElementById('yesterday-upload-status')) {
+                    document.getElementById('yesterday-upload-status').innerText = "Tersedia";
+                }
+            } else {
+                if (uploadYesterdayContainer) {
+                    uploadYesterdayContainer.style.opacity = '1';
+                    uploadYesterdayContainer.style.pointerEvents = 'auto';
+                }
+                if (iconYesterday) iconYesterday.className = "fa-solid fa-file-excel text-4xl text-slate-300 mb-3";
+                if (labelYesterdayText) {
+                    labelYesterdayText.innerText = "Pilih / Seret File Excel";
+                }
+                if (labelYesterdayStatus) {
+                    labelYesterdayStatus.className = "font-extrabold text-amber-600";
+                    labelYesterdayStatus.innerText = "Wajib Diunggah";
+                }
+                if (document.getElementById('yesterday-upload-status')) {
+                    document.getElementById('yesterday-upload-status').innerText = "Kosong";
+                }
+            }
+
+            // 2. UPDATE TODAY (H) UI STATE
+            const isTodayEnabled = hasData || hasUploadedYesterday;
+            if (uploadTodayContainer) {
+                if (!isTodayEnabled) {
+                    uploadTodayContainer.style.opacity = '0.35';
+                    uploadTodayContainer.style.pointerEvents = 'none';
+                } else {
+                    uploadTodayContainer.style.opacity = '1';
+                    uploadTodayContainer.style.pointerEvents = 'auto';
+                }
+            }
+
+            if (!isTodayEnabled) {
+                if (iconToday) iconToday.className = "fa-solid fa-file-excel text-4xl text-slate-300 mb-3";
+                if (labelTodayText) {
+                    labelTodayText.innerText = "Pilih / Seret File Excel";
+                }
+                if (labelTodayStatus) {
+                    labelTodayStatus.innerText = "Kosong";
+                }
+                if (document.getElementById('label-today-required')) {
+                    document.getElementById('label-today-required').className = "font-bold text-slate-400";
+                    document.getElementById('label-today-required').innerText = "Menunggu H-1";
+                }
+            } else {
+                if (hasUploadedToday) {
+                    if (iconToday) iconToday.className = "fa-solid fa-circle-check text-4xl text-emerald-500 mb-3";
+                    if (labelTodayStatus) {
+                        labelTodayStatus.innerText = "Valid";
+                    }
+                    if (document.getElementById('label-today-required')) {
+                        document.getElementById('label-today-required').className = "font-bold text-emerald-600";
+                        document.getElementById('label-today-required').innerText = "Valid (Baru Diunggah)";
+                    }
+                } else if (hasTodayData) {
+                    if (iconToday) iconToday.className = "fa-solid fa-circle-check text-4xl text-emerald-500 mb-3";
+                    if (labelTodayText) {
+                        labelTodayText.innerText = appState.todayFileName || "Data Tersimpan";
+                    }
+                    if (labelTodayStatus) {
+                        labelTodayStatus.innerText = "Tersedia";
+                    }
+                    if (document.getElementById('label-today-required')) {
+                        document.getElementById('label-today-required').className = "font-bold text-emerald-600 flex items-center gap-1";
+                        document.getElementById('label-today-required').innerHTML = `<i class="fa-solid fa-circle-check"></i> Sudah Tersimpan (Bisa Upload Ulang)`;
+                    }
+                } else {
+                    if (iconToday) iconToday.className = "fa-solid fa-file-excel text-4xl text-slate-300 mb-3";
+                    if (labelTodayText) {
+                        labelTodayText.innerText = "Pilih / Seret File Excel";
+                    }
+                    if (labelTodayStatus) {
+                        labelTodayStatus.innerText = "Kosong";
+                    }
+                    if (document.getElementById('label-today-required')) {
+                        document.getElementById('label-today-required').className = "font-bold text-rose-600";
+                        document.getElementById('label-today-required').innerText = "Wajib Diunggah";
+                    }
+                }
+            }
+
+            // 3. DATABASE STATUS BADGE & HEADER STATUS TEXT
+            if (hasData) {
+                if (badge) {
+                    badge.className = "px-3.5 py-2 rounded-2xl text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center gap-1.5";
+                    badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Referensi H-1: Tersedia`;
                 }
                 if (headerDbStatus) {
                     headerDbStatus.innerText = "Referensi Baseline Siap";
@@ -815,26 +978,9 @@
                     badge.className = "px-3.5 py-2 rounded-2xl text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-100 flex items-center gap-1.5";
                     badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Referensi H-1: Kosong (Wajib Upload)`;
                 }
-                if (uploadYesterdayContainer) {
-                    uploadYesterdayContainer.style.opacity = '1';
-                    uploadYesterdayContainer.style.pointerEvents = 'auto';
-                }
-                if (labelYesterdayStatus) {
-                    labelYesterdayStatus.className = "font-extrabold text-amber-600";
-                    labelYesterdayStatus.innerText = "Wajib Diunggah";
-                }
                 if (headerDbStatus) {
                     headerDbStatus.innerText = "Baseline Diperlukan";
                     headerDbStatus.className = "text-amber-700 font-bold";
-                }
-            }
-
-            // Atur opacity kontainer upload Hari Ini (H)
-            if (uploadTodayContainer) {
-                if (!hasData && !hasUploadedYesterday) {
-                    uploadTodayContainer.style.opacity = '0.35';
-                } else {
-                    uploadTodayContainer.style.opacity = '1';
                 }
             }
         }
@@ -1038,7 +1184,6 @@
                     baselineData = appState.uploadedYesterdayFile;
                     appState.yesterdayDB = baselineData;
                     appState.yesterdayFileName = yesterdayFileName;
-                    saveDBToLocal();
                     
                     appState.history.unshift({
                         time: getFormattedTimestamp(),
@@ -1089,31 +1234,25 @@
                 resultCalculated.sort((a, b) => b["DRAFT"] - a["DRAFT"]);
 
                 appState.currentReport = resultCalculated;
-                appState.yesterdayDB = todayData;
-                appState.yesterdayFileName = todayFileName;
+                
+                // SIMULATION UPDATE:
+                // Save today's data to todayDB and todayFileName instead of overwriting yesterdayDB immediately.
+                appState.todayDB = todayData;
+                appState.todayFileName = todayFileName;
                 saveDBToLocal();
 
-                // Simulasi target pergeseran tanggal simulasi
+                // Save last upload date
+                const todayStrCal = getIndonesianDateStr(new Date());
+                localStorage.setItem('simon_last_upload_date', todayStrCal);
+
+                // Update refStatus
                 if (appState.refStatus) {
                     appState.refStatus.hasData = true;
-                    // Majukan tanggal simulasi
-                    const parseSimDate = (dStr) => {
-                        const parts = dStr.split(" ");
-                        if (parts.length === 3) {
-                            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-                            return new Date(parseInt(parts[2], 10), months.indexOf(parts[1]), parseInt(parts[0], 10));
-                        }
-                        return new Date();
-                    };
-                    const nextToday = new Date(parseSimDate(todayStr).getTime() + 24 * 60 * 60 * 1000);
-                    appState.refStatus.yesterdayStr = todayStr;
-                    appState.refStatus.todayStr = `${nextToday.getDate()} Juli 2026`; // Keep in July 2026 for demo consistency
-                    appState.refStatus.latestDateStr = todayStr;
-                    
-                    const labelYesterday = document.getElementById('label-yesterday-date');
-                    const labelToday = document.getElementById('label-today-date');
-                    if (labelYesterday) labelYesterday.innerText = `Baseline (H-1): ${appState.refStatus.yesterdayStr}`;
-                    if (labelToday) labelToday.innerText = `Data Terbaru (H): ${appState.refStatus.todayStr}`;
+                    appState.refStatus.hasTodayData = true;
+                    appState.refStatus.todayFileName = todayFileName;
+                    if (appState.uploadedYesterdayFile) {
+                        appState.refStatus.yesterdayFileName = yesterdayFileName;
+                    }
                 }
 
                 appState.history.unshift({
