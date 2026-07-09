@@ -20,7 +20,7 @@ const REQUIRED_COLUMNS = [
 function doGet() {
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
-    .setTitle('Simon Performa - Monitoring Kinerja PPL')
+    .setTitle('Simon SE2026 - Monitoring Kinerja PPL')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }

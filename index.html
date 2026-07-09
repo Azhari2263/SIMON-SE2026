@@ -391,7 +391,7 @@
                         <!-- Action Buttons -->
                         <div class="flex items-center gap-2">
                             <button onclick="openDownloadModal()" class="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-bold text-xs px-5 py-3 rounded-xl shadow-md shadow-emerald-50 transition-all duration-150 flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-file-excel"></i> Unduh Laporan (.csv)
+                                <i class="fa-solid fa-file-excel"></i> Unduh Laporan (.xlsx)
                             </button>
                         </div>
                     </div>
@@ -420,8 +420,8 @@
                                     <th class="py-4 px-5 text-center">OPEN</th>
                                     <th class="py-4 px-5 text-center">SUBMITTED</th>
                                     <th class="py-4 px-5 text-center">DRAFT (Hari Ini)</th>
-                                    <th class="py-4 px-5 text-center">Rata-Rata (W/O Draft)</th>
-                                    <th class="py-4 px-5 text-center">Rata-Rata (W/ Draft)</th>
+                                    <th class="py-4 px-5 text-center">Rata-Rata Tanpa Draft</th>
+                                    <th class="py-4 px-5 text-center">Rata-Rata Dengan Draft</th>
                                     <th class="py-4 px-5 text-center bg-indigo-50/30 text-indigo-900 min-w-[160px]">Status Perubahan Draft</th>
                                 </tr>
                             </thead>
@@ -1192,10 +1192,10 @@
 
                 if (row["Perubahan"] < 0) {
                     badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-100";
-                    badgeText = `${row["Perubahan"]} Draft (Meningkat)`;
+                    badgeText = `${row["Perubahan"]} Draft (Submit Meningkat)`;
                 } else if (row["Perubahan"] > 0) {
                     badgeColor = "bg-rose-50 text-rose-700 border-rose-100";
-                    badgeText = `+${row["Perubahan"]} Draft (Bertambah)`;
+                    badgeText = `+${row["Perubahan"]} Draft (Draft Bertambah)`;
                 }
 
                 tbody.innerHTML += `
@@ -1332,43 +1332,68 @@
                 downloadData = downloadData.slice(0, limitVal);
             }
 
-            // Convert ke CSV
+            // Convert ke Excel (.xlsx) menggunakan SheetJS
             const headers = [
                 "No", "Nama PPL", "PML", "PJ Kuda", "OPEN", "SUBMITTED BY Pencacah",
-                "DRAFT", "Rata-Rata/Hari Tanpa Draft", "Rata-Rata/Hari Dengan Draft", "Perubahan Draft"
+                "DRAFT", "RATA-RATA TANPA DRAFT", "RATA-RATA DENGAN DRAFT", "Status Perubahan Draft"
             ];
 
-            const csvRows = [headers.join(",")];
+            const rows = [headers];
             downloadData.forEach((row, idx) => {
-                const values = [
+                let statusText = "0 (Sama)";
+                if (row["Perubahan"] < 0) {
+                    statusText = `${row["Perubahan"]} Draft (Submit Meningkat)`;
+                } else if (row["Perubahan"] > 0) {
+                    statusText = `+${row["Perubahan"]} Draft (Draft Bertambah)`;
+                }
+
+                rows.push([
                     idx + 1,
-                    `"${row["Nama PPL"]}"`,
-                    `"${row["PML"]}"`,
-                    `"${row["PJ Kuda"]}"`,
+                    row["Nama PPL"],
+                    row["PML"],
+                    row["PJ Kuda"],
                     row["OPEN"],
                     row["SUBMITTED BY Pencacah"],
                     row["DRAFT"],
                     row["Rata-Rata/Hari Tanpa Draft"],
                     row["Rata-Rata/Hari Dengan Draft"],
-                    row["Perubahan"]
-                ];
-                csvRows.push(values.join(","));
+                    statusText
+                ]);
             });
 
-            const csvString = csvRows.join("\n");
-            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+            const worksheet = XLSX.utils.aoa_to_sheet(rows);
+            
+            // Atur lebar kolom agar rapi
+            worksheet['!cols'] = [
+                { wch: 6 },   // No
+                { wch: 25 },  // Nama PPL
+                { wch: 20 },  // PML
+                { wch: 15 },  // PJ Kuda
+                { wch: 10 },  // OPEN
+                { wch: 25 },  // SUBMITTED BY Pencacah
+                { wch: 10 },  // DRAFT
+                { wch: 25 },  // RATA-RATA TANPA DRAFT
+                { wch: 25 },  // RATA-RATA DENGAN DRAFT
+                { wch: 30 }   // Status Perubahan Draft
+            ];
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Monitoring");
+
+            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.setAttribute("href", url);
             
             const limitName = !isNaN(limitVal) && limitVal > 0 ? `_top_${limitVal}` : '_all';
-            link.setAttribute("download", `Laporan_Perkembangan_Monitoring${limitName}_${getFormattedTimestamp().replace(/[: ]/g, '_')}.csv`);
+            link.setAttribute("download", `Laporan_Perkembangan_Monitoring${limitName}_${getFormattedTimestamp().replace(/[: ]/g, '_')}.xlsx`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             
             closeDownloadModal();
-            showAlert("Unduh laporan kustom (.csv) berhasil dijalankan.", "success");
+            showAlert("Unduh laporan kustom (.xlsx) berhasil dijalankan.", "success");
         }
 
         // GENERATE DASHBOARD PANEL
@@ -1513,7 +1538,7 @@
                     <i class="fa-solid fa-file-arrow-down text-emerald-600"></i>
                     Unduh Laporan Kustom
                 </h3>
-                <p class="text-xs text-slate-400 mt-1">Sesuaikan urutan data dan jumlah baris yang ingin dicantumkan di dalam file CSV.</p>
+                <p class="text-xs text-slate-400 mt-1">Sesuaikan urutan data dan jumlah baris yang ingin dicantumkan di dalam file Excel.</p>
             </div>
             
             <div class="space-y-4">
