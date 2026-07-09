@@ -1342,9 +1342,9 @@
             downloadData.forEach((row, idx) => {
                 let statusText = "0 (Sama)";
                 if (row["Perubahan"] < 0) {
-                    statusText = `${row["Perubahan"]} Draft (Submit Meningkat)`;
+                    statusText = `${row["Perubahan"]}`;
                 } else if (row["Perubahan"] > 0) {
-                    statusText = `+${row["Perubahan"]} Draft (Draft Bertambah)`;
+                    statusText = `+${row["Perubahan"]}`;
                 }
 
                 rows.push([
