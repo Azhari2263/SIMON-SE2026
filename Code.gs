@@ -91,17 +91,12 @@ function getLatestMonitoringDate() {
     return null; // Belum ada data
   }
   
-  const dates = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  const dates = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getDisplayValues();
   let latestDate = null;
   for (let i = 0; i < dates.length; i++) {
-    const d = dates[i][0];
-    let parsed = null;
-    if (d instanceof Date) {
-      parsed = d;
-    } else {
-      parsed = parseIndonesianDate(String(d));
-    }
-    
+    const dStr = dates[i][0].trim();
+    if (!dStr) continue;
+    const parsed = parseIndonesianDate(dStr);
     if (parsed) {
       if (!latestDate || parsed > latestDate) {
         latestDate = parsed;
@@ -125,23 +120,16 @@ function getMonitoringDataByDate(dateString) {
   }
   
   const lastRow = sheet.getLastRow();
-  const headers = ["Tanggal"].concat(REQUIRED_COLUMNS);
-  const data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const dateDisplayValues = sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
+  const restValues = sheet.getRange(2, 2, lastRow - 1, REQUIRED_COLUMNS.length).getValues();
   
   const results = [];
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    let rowDateStr = "";
-    if (row[0] instanceof Date) {
-      rowDateStr = formatIndonesianDate(row[0]);
-    } else {
-      rowDateStr = String(row[0]).trim();
-    }
-    
+  for (let i = 0; i < dateDisplayValues.length; i++) {
+    const rowDateStr = dateDisplayValues[i][0].trim();
     if (rowDateStr === dateString) {
       const obj = {};
       REQUIRED_COLUMNS.forEach((col, idx) => {
-        obj[col] = row[idx + 1];
+        obj[col] = restValues[i][idx];
       });
       results.push(obj);
     }
@@ -284,17 +272,9 @@ function saveMonitoringData(dataObj, dateString) {
   // Hapus data lama dengan tanggal yang sama agar tidak duplikat
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
-    const range = sheet.getRange(2, 1, lastRow - 1, 1);
-    const dates = range.getValues();
+    const displayDates = sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
     for (let i = lastRow; i >= 2; i--) {
-      const rowDate = dates[i - 2][0];
-      let rowDateStr = "";
-      if (rowDate instanceof Date) {
-        rowDateStr = formatIndonesianDate(rowDate);
-      } else {
-        rowDateStr = String(rowDate).trim();
-      }
-      
+      const rowDateStr = displayDates[i - 2][0].trim();
       if (rowDateStr === dateString) {
         sheet.deleteRow(i);
       }
@@ -413,14 +393,6 @@ function processUploads(yesterdayDataObj, todayDataObj, filenames, yesterdayStr,
     const refSheet = ss.getSheetByName(SHEET_REF_NAME);
     const userEmail = Session.getActiveUser().getEmail() || "Pengguna Aplikasi";
 
-    // Simpan file asli ke Google Drive (backup jika folder diatur)
-    if (filenames.today) {
-      saveToDrive(filenames.today, todayDataObj, FOLDER_DRIVE_ID);
-    }
-    if (filenames.yesterday && yesterdayDataObj) {
-      saveToDrive(filenames.yesterday, yesterdayDataObj, FOLDER_DRIVE_ID);
-    }
-
     let baselineData = [];
     if (yesterdayDataObj && yesterdayDataObj.length > 0) {
       // Validasi kolom file kemarin
@@ -498,6 +470,18 @@ function processUploads(yesterdayDataObj, todayDataObj, filenames, yesterdayStr,
 
     logHistory(filenames.today, "Upload File Hari Ini (" + todayStr + ") & Kalkulasi", userEmail);
 
+    // Simpan backup file asli ke Google Drive (diletakkan di akhir secara opsional agar tidak menghentikan perekaman database utama)
+    try {
+      if (todayDataObj && todayDataObj.length > 0) {
+        saveToDrive(todayStr + "_Data Monitoring Kuda", todayDataObj, FOLDER_DRIVE_ID);
+      }
+      if (yesterdayDataObj && yesterdayDataObj.length > 0) {
+        saveToDrive(yesterdayStr + "_Data Monitoring Kuda", yesterdayDataObj, FOLDER_DRIVE_ID);
+      }
+    } catch (driveErr) {
+      Logger.log("Gagal memproses penyimpanan backup Drive: " + driveErr.toString());
+    }
+
     return {
       success: true,
       data: results,
@@ -525,7 +509,11 @@ function validateHeaders(rowObj, requiredCols) {
  */
 function saveToDrive(filename, dataObj, folderId) {
   try {
-    if (folderId === "MASUKKAN_ID_FOLDER_GOOGLE_DRIVE_DISINI" || !folderId || folderId === "1ihZrsWTrJp-wwmpA-CMCw6UREsTNQLaw") return;
+    // Abaikan jika ID folder kosong, masih placeholder default, atau menggunakan ID dummy bawaan
+    if (!folderId || folderId === "MASUKKAN_ID_FOLDER_GOOGLE_DRIVE_DISINI" || folderId === "1ihZrsWTrJp-wwmpA-CMCw6UREsTNQLaw") {
+      Logger.log("Penyimpanan Google Drive diabaikan: ID folder dummy atau belum terkonfigurasi.");
+      return;
+    }
     const folder = DriveApp.getFolderById(folderId);
     const headers = Object.keys(dataObj[0]);
     const csvContent = [
@@ -533,7 +521,8 @@ function saveToDrive(filename, dataObj, folderId) {
       ...dataObj.map(row => headers.map(h => '"' + (row[h] || '').toString().replace(/"/g, '""') + '"').join(","))
     ].join("\n");
     
-    folder.createFile(filename + "_backup.csv", csvContent, MimeType.CSV);
+    // Simpan file dengan ekstensi .csv
+    folder.createFile(filename + ".csv", csvContent, MimeType.CSV);
   } catch (e) {
     Logger.log("Gagal backup Drive: " + e.toString());
   }
