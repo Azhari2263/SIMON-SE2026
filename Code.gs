@@ -409,6 +409,25 @@ function getInitialData() {
         headers.forEach((h, idx) => obj[h] = row[idx]);
         return obj;
       });
+
+      // Jika kolom "Realisasi Tanpa Draft" belum ada di LAPORAN_TERKINI (karena data lama),
+      // ambil datanya langsung dari sheet DATA_MONITORING untuk tanggal terbaru.
+      if (currentReport.length > 0 && !currentReport[0].hasOwnProperty("Realisasi Tanpa Draft")) {
+        const latestDate = getLatestMonitoringDate();
+        if (latestDate) {
+          const latestDateStr = formatIndonesianDate(latestDate);
+          const monitoringRows = getMonitoringDataByDate(latestDateStr);
+          const monitoringMap = new Map();
+          monitoringRows.forEach(row => {
+            const key = (row["Nama PPL"] || "").toString().trim() + "|" + (row["Kab/Kota"] || "").toString().trim();
+            monitoringMap.set(key, Number(row["Realisasi Tanpa Draft"]) || 0);
+          });
+          currentReport.forEach(row => {
+            const key = (row["Nama PPL"] || "").toString().trim() + "|" + (row["Kab/Kota"] || "").toString().trim();
+            row["Realisasi Tanpa Draft"] = monitoringMap.has(key) ? monitoringMap.get(key) : 0;
+          });
+        }
+      }
     }
     
     // 3. Ambil log riwayat dari RIWAYAT_UPLOAD (maks 100 terakhir)
@@ -528,6 +547,7 @@ function processUploads(yesterdayDataObj, todayDataObj, filenames, yesterdayStr,
         "OPEN": Number(row["OPEN"]) || 0,
         "SUBMITTED BY Pencacah": Number(row["SUBMITTED BY Pencacah"]) || 0,
         "DRAFT": draftToday,
+        "Realisasi Tanpa Draft": Number(row["Realisasi Tanpa Draft"]) || 0,
         "Rata-Rata/Hari Tanpa Draft": Number(row["Rata-Rata/Hari Tanpa Draft"]) || 0,
         "Rata-Rata/Hari Dengan Draft": Number(row["Rata-Rata/Hari Dengan Draft"]) || 0,
         "Perubahan": perubahan
