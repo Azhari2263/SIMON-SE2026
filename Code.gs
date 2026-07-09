@@ -486,14 +486,20 @@ function processUploads(yesterdayDataObj, todayDataObj, filenames, yesterdayStr,
       }
     }
 
-    // Validasi kolom file hari ini
-    if (!todayDataObj || todayDataObj.length === 0) {
-      throw new Error("Data hari ini kosong atau tidak valid.");
+    // Ambil/Simpan data hari ini
+    let todayData = [];
+    if (todayDataObj && todayDataObj.length > 0) {
+      validateHeaders(todayDataObj[0], REQUIRED_COLUMNS);
+      saveMonitoringData(todayDataObj, todayStr);
+      todayData = todayDataObj;
+      logHistory(filenames.today, "Upload File Hari Ini (" + todayStr + ") & Kalkulasi", userEmail);
+    } else {
+      todayData = getMonitoringDataByDate(todayStr);
+      if (todayData.length === 0) {
+        throw new Error("Data hari ini tanggal " + todayStr + " tidak ditemukan di database. Silakan upload berkas hari ini terlebih dahulu.");
+      }
+      logHistory("-", "Kalkulasi Ulang (" + todayStr + ")", userEmail);
     }
-    validateHeaders(todayDataObj[0], REQUIRED_COLUMNS);
-
-    // Simpan berkas hari ini ke DATA_MONITORING dengan tanggal hari ini (e.g. 9 Juli 2026)
-    saveMonitoringData(todayDataObj, todayStr);
 
     // Proses Kalkulasi Perbandingan
     const results = [];
@@ -503,7 +509,7 @@ function processUploads(yesterdayDataObj, todayDataObj, filenames, yesterdayStr,
       yesterdayMap.set(key, Number(row["DRAFT"]) || 0);
     });
 
-    todayDataObj.forEach(row => {
+    todayData.forEach(row => {
       const pplName = (row["Nama PPL"] || "").toString().trim();
       const kab = (row["Kab/Kota"] || "").toString().trim();
       const key = pplName + "|" + kab;
@@ -542,8 +548,6 @@ function processUploads(yesterdayDataObj, todayDataObj, filenames, yesterdayStr,
 
     // Simpan hasil kalkulasi laporan ke LAPORAN_TERKINI
     saveReportData(results);
-
-    logHistory(filenames.today, "Upload File Hari Ini (" + todayStr + ") & Kalkulasi", userEmail);
 
     // Simpan backup file asli ke Google Drive (diletakkan di akhir secara opsional agar tidak menghentikan perekaman database utama)
     try {

@@ -277,11 +277,11 @@
                         <div>
                             <div class="flex items-center justify-between mb-4">
                                 <span id="label-yesterday-date" class="bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg border border-amber-200">
-                                    Baseline (H-1)
+                                    Baseline H-1
                                 </span>
                                 <span class="text-[11px] text-slate-400 font-medium" id="yesterday-upload-status">Kosong</span>
                             </div>
-                            <h4 class="font-extrabold text-slate-800 text-sm mb-1">Data Monitoring Hari Sebelumnya</h4>
+                            <h4 class="font-extrabold text-slate-800 text-sm mb-1">Data Monitoring Sebelumnya</h4>
                             <p class="text-xs text-slate-400 mb-6">Hanya diunggah jika database dalam keadaan kosong sebagai baseline awal pembanding kinerja.</p>
                             
                             <!-- Dropzone Label -->
@@ -303,11 +303,11 @@
                         <div>
                             <div class="flex items-center justify-between mb-4">
                                 <span id="label-today-date" class="bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg border border-indigo-200">
-                                    Data Terbaru (H)
+                                    Data Terbaru H
                                 </span>
                                 <span class="text-[11px] text-slate-400 font-medium" id="today-upload-status">Kosong</span>
                             </div>
-                            <h4 class="font-extrabold text-slate-800 text-sm mb-1">Data Monitoring Hari Ini</h4>
+                            <h4 class="font-extrabold text-slate-800 text-sm mb-1">Data Monitoring Terbaru</h4>
                             <p class="text-xs text-slate-400 mb-6">Berkas perkembangan kinerja harian terbaru yang akan diimpor dan dibandingkan dengan baseline.</p>
                             
                             <!-- Dropzone Label -->
@@ -575,8 +575,8 @@
                 };
                 const labelYesterday = document.getElementById('label-yesterday-date');
                 const labelToday = document.getElementById('label-today-date');
-                if (labelYesterday) labelYesterday.innerText = `Baseline (H-1): ${appState.refStatus.yesterdayStr}`;
-                if (labelToday) labelToday.innerText = `Data Terbaru (H): ${appState.refStatus.todayStr}`;
+                if (labelYesterday) labelYesterday.innerText = `Baseline H-1`;
+                if (labelToday) labelToday.innerText = `Data Terbaru H`;
                 
                 updateUIState();
                 renderDashboard();
@@ -658,11 +658,11 @@
                 // Update label upload dengan tanggal dinamis dari server
                 const labelYesterday = document.getElementById('label-yesterday-date');
                 const labelToday = document.getElementById('label-today-date');
-                if (labelYesterday && result.refStatus.yesterdayStr) {
-                    labelYesterday.innerText = `Baseline (H-1): ${result.refStatus.yesterdayStr}`;
+                if (labelYesterday) {
+                    labelYesterday.innerText = `Baseline H-1`;
                 }
-                if (labelToday && result.refStatus.todayStr) {
-                    labelToday.innerText = `Data Terbaru (H): ${result.refStatus.todayStr}`;
+                if (labelToday) {
+                    labelToday.innerText = `Data Terbaru H`;
                 }
                 
                 // Update history
@@ -870,8 +870,8 @@
                 }
             } else if (hasData) {
                 if (uploadYesterdayContainer) {
-                    uploadYesterdayContainer.style.opacity = '0.35';
-                    uploadYesterdayContainer.style.pointerEvents = 'none';
+                    uploadYesterdayContainer.style.opacity = '1';
+                    uploadYesterdayContainer.style.pointerEvents = 'auto';
                 }
                 if (iconYesterday) iconYesterday.className = "fa-solid fa-circle-check text-4xl text-emerald-500 mb-3";
                 if (labelYesterdayText) {
@@ -879,7 +879,7 @@
                 }
                 if (labelYesterdayStatus) {
                     labelYesterdayStatus.className = "font-extrabold text-emerald-600 flex items-center gap-1";
-                    labelYesterdayStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Sudah Tersimpan di Database`;
+                    labelYesterdayStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Sudah Tersimpan (Bisa Upload Ulang)`;
                 }
                 if (document.getElementById('yesterday-upload-status')) {
                     document.getElementById('yesterday-upload-status').innerText = "Tersedia";
@@ -1148,14 +1148,15 @@
         // COMPUTE AND COMPARE PROCESS
         function processFiles() {
             const hasYesterdayDB = appState.yesterdayDB.length > 0;
+            const hasTodayDB = appState.todayDB && appState.todayDB.length > 0;
             
             // Check requirement based on scenario
             if (!hasYesterdayDB && !appState.uploadedYesterdayFile) {
-                showAlert("Gagal memproses. Anda wajib mengunggah Data Hari Sebelumnya (H-1) terlebih dahulu.", "warning");
+                showAlert("Gagal memproses. Anda wajib mengunggah Data Baseline H-1 terlebih dahulu.", "warning");
                 return;
             }
-            if (!appState.uploadedTodayFile) {
-                showAlert("Gagal memproses. Anda wajib mengunggah Data Hari Ini.", "warning");
+            if (!hasTodayDB && !appState.uploadedTodayFile) {
+                showAlert("Gagal memproses. Anda wajib mengunggah Data Terbaru H terlebih dahulu.", "warning");
                 return;
             }
 
@@ -1164,7 +1165,7 @@
             
             const filenames = {
                 yesterday: appState.uploadedYesterdayFile ? yesterdayFileName : "",
-                today: todayFileName
+                today: appState.uploadedTodayFile ? todayFileName : ""
             };
 
             const yesterdayStr = appState.refStatus && appState.refStatus.yesterdayStr ? appState.refStatus.yesterdayStr : "";
@@ -1196,7 +1197,29 @@
                     baselineData = appState.yesterdayDB;
                 }
 
-                const todayData = appState.uploadedTodayFile;
+                let todayData = [];
+                if (appState.uploadedTodayFile) {
+                    todayData = appState.uploadedTodayFile;
+                    appState.todayDB = todayData;
+                    appState.todayFileName = todayFileName;
+                    
+                    appState.history.unshift({
+                        time: getFormattedTimestamp(),
+                        type: "Kalkulasi Perbandingan (Simulasi - " + todayStr + ")",
+                        file: todayFileName,
+                        user: "admin@bps.go.id",
+                        status: "SUKSES"
+                    });
+                } else {
+                    todayData = appState.todayDB;
+                    appState.history.unshift({
+                        time: getFormattedTimestamp(),
+                        type: "Kalkulasi Ulang (Simulasi - " + todayStr + ")",
+                        file: "-",
+                        user: "admin@bps.go.id",
+                        status: "SUKSES"
+                    });
+                }
 
                 // Map Yesterday Drafts for fast lookup
                 const yesterdayMap = new Map();
@@ -1234,11 +1257,6 @@
                 resultCalculated.sort((a, b) => b["DRAFT"] - a["DRAFT"]);
 
                 appState.currentReport = resultCalculated;
-                
-                // SIMULATION UPDATE:
-                // Save today's data to todayDB and todayFileName instead of overwriting yesterdayDB immediately.
-                appState.todayDB = todayData;
-                appState.todayFileName = todayFileName;
                 saveDBToLocal();
 
                 // Save last upload date
@@ -1249,7 +1267,7 @@
                 if (appState.refStatus) {
                     appState.refStatus.hasData = true;
                     appState.refStatus.hasTodayData = true;
-                    appState.refStatus.todayFileName = todayFileName;
+                    appState.refStatus.todayFileName = appState.todayFileName;
                     if (appState.uploadedYesterdayFile) {
                         appState.refStatus.yesterdayFileName = yesterdayFileName;
                     }
