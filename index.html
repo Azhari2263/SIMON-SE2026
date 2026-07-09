@@ -1340,7 +1340,7 @@
 
             const rows = [headers];
             downloadData.forEach((row, idx) => {
-                let statusText = "0 (Sama)";
+                let statusText = "0";
                 if (row["Perubahan"] < 0) {
                     statusText = `${row["Perubahan"]}`;
                 } else if (row["Perubahan"] > 0) {
